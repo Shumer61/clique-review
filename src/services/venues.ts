@@ -7,7 +7,10 @@ import {
   where, 
   Timestamp,
   GeoPoint,
-  orderBy
+  orderBy,
+  onSnapshot,
+  QuerySnapshot,
+  DocumentData
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -54,13 +57,10 @@ export async function addVenue(
   return docRef.id;
 }
 
-// Get all venues for a specific clique
+// Get all venues for a specific clique (static query)
 export async function getCliqueVenues(cliqueId: string): Promise<Venue[]> {
-  console.log('[venues] getCliqueVenues querying for cliqueId:', cliqueId);
   const q = query(collection(db, 'venues'), where('addedByCliqueId', '==', cliqueId), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
-  console.log('[venues] query snapshot size:', snapshot.size);
-  snapshot.forEach(doc => console.log('[venues] doc:', doc.id, doc.data()));
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Venue));
 }
 
@@ -88,9 +88,41 @@ export async function addRating(
   return docRef.id;
 }
 
-// Get all ratings for venues in a clique
+// Get all ratings for venues in a clique (static query)
 export async function getCliqueRatings(cliqueId: string): Promise<Rating[]> {
   const q = query(collection(db, 'ratings'), where('cliqueId', '==', cliqueId), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Rating));
+}
+
+// Real-time listener for venues in a clique
+export function listenToCliqueVenues(
+  cliqueId: string,
+  callback: (venues: Venue[]) => void
+): () => void {
+  const q = query(
+    collection(db, 'venues'),
+    where('addedByCliqueId', '==', cliqueId),
+    orderBy('createdAt', 'desc')
+  );
+  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+    const venues = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Venue);
+    callback(venues);
+  });
+}
+
+// Real-time listener for ratings in a clique
+export function listenToCliqueRatings(
+  cliqueId: string,
+  callback: (ratings: Rating[]) => void
+): () => void {
+  const q = query(
+    collection(db, 'ratings'),
+    where('cliqueId', '==', cliqueId),
+    orderBy('createdAt', 'desc')
+  );
+  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+    const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Rating);
+    callback(ratings);
+  });
 }

@@ -1,57 +1,74 @@
 import { create } from 'zustand';
-import { Venue, Rating, addVenue, getCliqueVenues, addRating, getCliqueRatings } from '../services/venues';
-import { useCliqueStore } from './cliqueStore';
+import { Venue, Rating, addVenue, addRating, listenToCliqueVenues, listenToCliqueRatings } from '../services/venues';
 
-interface VenueWithRatings extends Venue {
-  averageRating?: number;
-  ratingsCount?: number;
+export type SortOption = 'rating_desc' | 'latest_visit' | 'name_asc';
+
+interface VenueWithStats extends Venue {
+  averageRating: number;
+  ratingsCount: number;
+  lastVisitDate: Date | null;
 }
 
 interface VenueState {
-  venues: VenueWithRatings[];
+  venues: VenueWithStats[];
+  rawVenues: Venue[];
   ratings: Rating[];
   loading: boolean;
   error: string | null;
-  loadVenues: (cliqueId: string) => Promise<void>;
-  loadRatings: (cliqueId: string) => Promise<void>;
-  createVenue: (venueData: Omit<Venue, 'id' | 'createdAt'>) => Promise<string>;
-  createRating: (ratingData: Omit<Rating, 'id' | 'createdAt'>) => Promise<void>;
-  getAverageRatingForVenue: (venueId: string) => number;
+  sortBy: SortOption;
+  filterTags: string[];
+  unsubscribeVenues?: () => void;
+  unsubscribeRatings?: () => void;
+  
+  // Actions
+  initLiveListeners: (cliqueId: string) => void;
+  cleanup: () => void;
+  addVenueManually: (venueData: Omit<Venue, 'id' | 'createdAt'>) => Promise<string>;
+  addRatingManually: (ratingData: Omit<Rating, 'id' | 'createdAt'>) => Promise<void>;
+  setSortBy: (sort: SortOption) => void;
+  setFilterTags: (tags: string[]) => void;
+  getFilteredAndSortedVenues: () => VenueWithStats[];
 }
 
 export const useVenueStore = create<VenueState>((set, get) => ({
   venues: [],
+  rawVenues: [],
   ratings: [],
   loading: false,
   error: null,
+  sortBy: 'rating_desc',
+  filterTags: [],
 
-  loadVenues: async (cliqueId) => {
-  console.log('[venueStore] loadVenues called with cliqueId:', cliqueId);
-  set({ loading: true, error: null });
-  try {
-    const venues = await getCliqueVenues(cliqueId);
-    console.log('[venueStore] getCliqueVenues returned:', venues);
-    set({ venues, loading: false });
-  } catch (error: any) {
-    console.error('[venueStore] loadVenues error:', error);
-    set({ error: error.message, loading: false });
-  }
-},
-
-  loadRatings: async (cliqueId) => {
-    console.log('[venueStore] loadRatings called with cliqueId:', cliqueId);
-    set({ loading: true });
-    try {
-      const ratings = await getCliqueRatings(cliqueId);
-      console.log('[venueStore] getCliqueRatings returned:', ratings);
-      set({ ratings, loading: false });
-    } catch (error: any) {
-      console.error('[venueStore] loadRatings error:', error);
-      set({ error: error.message, loading: false });
-    }
+  initLiveListeners: (cliqueId) => {
+    // Clean up previous listeners
+    get().cleanup();
+    
+    // Listen to venues
+    const unsubscribeVenues = listenToCliqueVenues(cliqueId, (rawVenues) => {
+      set({ rawVenues });
+      const { ratings, sortBy, filterTags } = get();
+      const computed = computeVenueStats(rawVenues, ratings);
+      set({ venues: applyFiltersAndSort(computed, filterTags, sortBy) });
+    });
+    
+    // Listen to ratings
+    const unsubscribeRatings = listenToCliqueRatings(cliqueId, (ratings) => {
+      set({ ratings });
+      const { rawVenues, sortBy, filterTags } = get();
+      const computed = computeVenueStats(rawVenues, ratings);
+      set({ venues: applyFiltersAndSort(computed, filterTags, sortBy) });
+    });
+    
+    set({ unsubscribeVenues, unsubscribeRatings });
   },
 
-  createVenue: async (venueData) => {
+  cleanup: () => {
+    const { unsubscribeVenues, unsubscribeRatings } = get();
+    if (unsubscribeVenues) unsubscribeVenues();
+    if (unsubscribeRatings) unsubscribeRatings();
+  },
+
+  addVenueManually: async (venueData) => {
     set({ loading: true, error: null });
     try {
       const venueId = await addVenue(
@@ -62,21 +79,16 @@ export const useVenueStore = create<VenueState>((set, get) => ({
         venueData.addedBy,
         venueData.addedByCliqueId
       );
-      // Reload venues for the current clique
-      const { currentClique } = useCliqueStore.getState();
-      if (currentClique?.id) {
-        await get().loadVenues(currentClique.id);
-      }
       set({ loading: false });
       return venueId;
     } catch (error: any) {
-      console.error('createVenue error:', error);
+      console.error('addVenueManually error:', error);
       set({ error: error.message, loading: false });
       throw error;
     }
   },
 
-  createRating: async (ratingData) => {
+  addRatingManually: async (ratingData) => {
     set({ loading: true, error: null });
     try {
       await addRating(
@@ -88,18 +100,71 @@ export const useVenueStore = create<VenueState>((set, get) => ({
         ratingData.comment,
         ratingData.visitedDate.toDate()
       );
-      await get().loadRatings(ratingData.cliqueId);
       set({ loading: false });
     } catch (error: any) {
+      console.error('addRatingManually error:', error);
       set({ error: error.message, loading: false });
       throw error;
     }
   },
 
-  getAverageRatingForVenue: (venueId) => {
-    const ratings = get().ratings.filter(r => r.venueId === venueId);
-    if (ratings.length === 0) return 0;
-    const sum = ratings.reduce((acc, r) => acc + r.rating, 0);
-    return sum / ratings.length;
+  setSortBy: (sortBy) => {
+    set({ sortBy });
+    const { venues: computed, filterTags } = get();
+    const filtered = applyFiltersAndSort(computed, filterTags, sortBy);
+    set({ venues: filtered });
+  },
+
+  setFilterTags: (filterTags) => {
+    set({ filterTags });
+    const { venues: computed, sortBy } = get();
+    const filtered = applyFiltersAndSort(computed, filterTags, sortBy);
+    set({ venues: filtered });
+  },
+
+  getFilteredAndSortedVenues: () => {
+    const { venues } = get();
+    return venues;
   },
 }));
+
+// Helper: compute average rating, count, last visit date for each venue
+function computeVenueStats(venues: Venue[], ratings: Rating[]): VenueWithStats[] {
+  const ratingMap = new Map<string, { sum: number; count: number; lastDate: Date | null }>();
+  for (const r of ratings) {
+    const existing = ratingMap.get(r.venueId) || { sum: 0, count: 0, lastDate: null };
+    const newSum = existing.sum + r.rating;
+    const newCount = existing.count + 1;
+    const rDate = r.visitedDate.toDate();
+    const newLastDate = existing.lastDate && rDate < existing.lastDate ? existing.lastDate : rDate;
+    ratingMap.set(r.venueId, { sum: newSum, count: newCount, lastDate: newLastDate });
+  }
+  return venues.map(v => {
+    const stats = ratingMap.get(v.id!) || { sum: 0, count: 0, lastDate: null };
+    return {
+      ...v,
+      averageRating: stats.count === 0 ? 0 : stats.sum / stats.count,
+      ratingsCount: stats.count,
+      lastVisitDate: stats.lastDate,
+    };
+  });
+}
+
+function applyFiltersAndSort(venues: VenueWithStats[], filterTags: string[], sortBy: SortOption): VenueWithStats[] {
+  let filtered = venues;
+  if (filterTags.length > 0) {
+    // For MVP, tag filtering skipped because tags are per‑rating, not per‑venue.
+    // In a future version you could aggregate tags on venues.
+    filtered = venues; 
+  }
+  switch (sortBy) {
+    case 'rating_desc':
+      return [...filtered].sort((a,b) => b.averageRating - a.averageRating);
+    case 'latest_visit':
+      return [...filtered].sort((a,b) => (b.lastVisitDate?.getTime() || 0) - (a.lastVisitDate?.getTime() || 0));
+    case 'name_asc':
+      return [...filtered].sort((a,b) => a.name.localeCompare(b.name));
+    default:
+      return filtered;
+  }
+}

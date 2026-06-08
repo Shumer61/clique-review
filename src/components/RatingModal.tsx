@@ -14,23 +14,21 @@ const vibeTags = ['lively', 'chill', 'cheap drinks', 'good music', 'quiet', 'out
 export default function RatingModal({ venueId, onClose }: RatingModalProps) {
   const { user } = useAuthStore();
   const { currentClique } = useCliqueStore();
-  const { createRating, loading } = useVenueStore();
+  const { addRatingManually, loading } = useVenueStore();
   const [rating, setRating] = useState<number>(3);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [comment, setComment] = useState('');
   const [visitedDate, setVisitedDate] = useState(new Date().toISOString().split('T')[0]);
 
   const handleTagToggle = (tag: string) => {
-    if (selectedTags.includes(tag)) {
-      setSelectedTags(selectedTags.filter(t => t !== tag));
-    } else {
-      setSelectedTags([...selectedTags, tag]);
-    }
+    setSelectedTags(prev =>
+      prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+    );
   };
 
   const handleSubmit = async () => {
     if (!user || !currentClique) return;
-    await createRating({
+    await addRatingManually({
       venueId,
       cliqueId: currentClique.id!,
       userId: user.uid,

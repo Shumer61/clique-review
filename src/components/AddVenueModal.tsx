@@ -12,7 +12,7 @@ interface AddVenueModalProps {
 export default function AddVenueModal({ onClose, initialLocation }: AddVenueModalProps) {
   const { user } = useAuthStore();
   const { currentClique } = useCliqueStore();
-  const { createVenue, loading } = useVenueStore();
+  const { addVenueManually, loading } = useVenueStore();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [selectedLat, setSelectedLat] = useState<number | null>(null);
@@ -32,13 +32,6 @@ export default function AddVenueModal({ onClose, initialLocation }: AddVenueModa
   }, [initialLocation]);
 
   const handleSubmit = async () => {
-    console.log('=== AddVenueModal Debug ===');
-    console.log('user:', user);
-    console.log('currentClique:', currentClique);
-    console.log('selectedLat, selectedLng:', selectedLat, selectedLng);
-    console.log('name:', name);
-    console.log('address:', address);
-
     if (!user || !currentClique) {
       alert('Missing user or clique. Please log out and back in.');
       return;
@@ -59,13 +52,10 @@ export default function AddVenueModal({ onClose, initialLocation }: AddVenueModa
       addedBy: user.uid,
       addedByCliqueId: currentClique.id!,
     };
-    console.log('Calling createVenue with:', venueData);
     try {
-      await createVenue(venueData);
-      console.log('Venue added successfully');
+      await addVenueManually(venueData);
       onClose();
     } catch (err: any) {
-      console.error('Error adding venue:', err);
       alert('Failed to add venue: ' + (err.message || 'Unknown error'));
     }
   };
