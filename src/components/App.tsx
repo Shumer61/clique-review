@@ -1,30 +1,28 @@
-import { useEffect, useRef } from 'react';
-import maplibregl from 'maplibre-gl';
+// src/components/App.tsx
+import { useEffect } from 'react';
+import { useAuthStore } from '../store/authStore';
+import Auth from './Auth';
+import MapView from './MapView';
 
 export default function App() {
-  const mapContainer = useRef<HTMLDivElement>(null);
-  const map = useRef<maplibregl.Map | null>(null);
+  const { user, loading, initAuthListener } = useAuthStore();
 
   useEffect(() => {
-    if (map.current) return;
-    if (!mapContainer.current) return;
+    const unsubscribe = initAuthListener();
+    return () => unsubscribe();
+  }, [initAuthListener]);
 
-    map.current = new maplibregl.Map({
-      container: mapContainer.current,
-      style: 'https://tiles.stadiamaps.com/styles/osm_bright.json',
-      center: [36.8219, -1.2921],
-      zoom: 12
-    });
+  if (loading) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        Loading...
+      </div>
+    );
+  }
 
-    map.current.addControl(new maplibregl.NavigationControl(), 'top-right');
-  }, []);
+  if (!user) {
+    return <Auth />;
+  }
 
-  return (
-    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <header style={{ padding: '1rem', background: '#333', color: 'white' }}>
-        <h1>Clique Reviews – Nairobi</h1>
-      </header>
-      <div ref={mapContainer} style={{ flex: 1 }} />
-    </div>
-  );
+  return <MapView />;
 }

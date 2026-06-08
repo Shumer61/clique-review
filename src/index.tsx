@@ -1,3 +1,4 @@
+// src/index.tsx (unchanged)
 import { createRoot } from 'react-dom/client';
 import App from './components/App';
 
