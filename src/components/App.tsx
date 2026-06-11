@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import Auth from './Auth';
 import AuthenticatedApp from './AuthenticatedApp';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 export default function App() {
   const { user, loading, initAuthListener } = useAuthStore();

@@ -22,6 +22,10 @@ service cloud.firestore {
   allow create: if request.auth != null && request.auth.uid == resource.data.userId;
   allow delete: if request.auth != null && request.auth.uid == resource.data.userId;
 }
+match /ratings/{ratingId} {
+  allow update: if request.auth.uid == resource.data.userId
+                && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comment']);
+}
     */
   }
 }

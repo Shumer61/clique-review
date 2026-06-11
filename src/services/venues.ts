@@ -1,7 +1,10 @@
+// src/services/venues.ts
 import { 
   collection, 
   doc, 
-  addDoc, 
+  addDoc,
+  deleteDoc,
+  updateDoc,
   getDocs, 
   query, 
   where, 
@@ -10,7 +13,8 @@ import {
   orderBy,
   onSnapshot,
   QuerySnapshot,
-  DocumentData
+  DocumentData,
+  writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
 
@@ -36,7 +40,8 @@ export interface Rating {
   createdAt: Timestamp;
 }
 
-// Add a new venue
+// ─── Venues ───────────────────────────────────────────────────────────────────
+
 export async function addVenue(
   name: string,
   address: string,
@@ -57,14 +62,46 @@ export async function addVenue(
   return docRef.id;
 }
 
-// Get all venues for a specific clique (static query)
-export async function getCliqueVenues(cliqueId: string): Promise<Venue[]> {
-  const q = query(collection(db, 'venues'), where('addedByCliqueId', '==', cliqueId), orderBy('createdAt', 'desc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Venue));
+/**
+ * Delete a venue and ALL its ratings in a single batch.
+ * Only call after confirming current user is the owner (addedBy).
+ */
+export async function deleteVenue(venueId: string): Promise<void> {
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'venues', venueId));
+  const ratingsSnap = await getDocs(
+    query(collection(db, 'ratings'), where('venueId', '==', venueId))
+  );
+  ratingsSnap.docs.forEach(d => batch.delete(d.ref));
+  await batch.commit();
 }
 
-// Add a rating for a venue
+export async function getCliqueVenues(cliqueId: string): Promise<Venue[]> {
+  const q = query(
+    collection(db, 'venues'),
+    where('addedByCliqueId', '==', cliqueId),
+    orderBy('createdAt', 'desc')
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Venue));
+}
+
+export function listenToCliqueVenues(
+  cliqueId: string,
+  callback: (venues: Venue[]) => void
+): () => void {
+  const q = query(
+    collection(db, 'venues'),
+    where('addedByCliqueId', '==', cliqueId),
+    orderBy('createdAt', 'desc')
+  );
+  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
+    callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }) as Venue));
+  });
+}
+
+// ─── Ratings ──────────────────────────────────────────────────────────────────
+
 export async function addRating(
   venueId: string,
   cliqueId: string,
@@ -88,30 +125,38 @@ export async function addRating(
   return docRef.id;
 }
 
-// Get all ratings for venues in a clique (static query)
-export async function getCliqueRatings(cliqueId: string): Promise<Rating[]> {
-  const q = query(collection(db, 'ratings'), where('cliqueId', '==', cliqueId), orderBy('createdAt', 'desc'));
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Rating));
+/**
+ * Delete a single rating.
+ * Only call after confirming current user is the owner (userId).
+ */
+export async function deleteRating(ratingId: string): Promise<void> {
+  await deleteDoc(doc(db, 'ratings', ratingId));
 }
 
-// Real-time listener for venues in a clique
-export function listenToCliqueVenues(
-  cliqueId: string,
-  callback: (venues: Venue[]) => void
-): () => void {
-  const q = query(
-    collection(db, 'venues'),
-    where('addedByCliqueId', '==', cliqueId),
-    orderBy('createdAt', 'desc')
-  );
-  return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-    const venues = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Venue);
-    callback(venues);
+/**
+ * Update just the comment field on an existing rating.
+ * Pass undefined to clear the comment entirely.
+ * Only call after confirming current user is the owner (userId).
+ */
+export async function updateRatingComment(
+  ratingId: string,
+  comment: string | undefined
+): Promise<void> {
+  await updateDoc(doc(db, 'ratings', ratingId), {
+    comment: comment ?? null,
   });
 }
 
-// Real-time listener for ratings in a clique
+export async function getCliqueRatings(cliqueId: string): Promise<Rating[]> {
+  const q = query(
+    collection(db, 'ratings'),
+    where('cliqueId', '==', cliqueId),
+    orderBy('createdAt', 'desc')
+  );
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Rating));
+}
+
 export function listenToCliqueRatings(
   cliqueId: string,
   callback: (ratings: Rating[]) => void
@@ -122,7 +167,6 @@ export function listenToCliqueRatings(
     orderBy('createdAt', 'desc')
   );
   return onSnapshot(q, (snapshot: QuerySnapshot<DocumentData>) => {
-    const ratings = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as Rating);
-    callback(ratings);
+    callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() }) as Rating));
   });
 }
