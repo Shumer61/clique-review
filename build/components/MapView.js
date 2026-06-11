@@ -1,4 +1,5 @@
 import { jsx as _jsx, Fragment as _Fragment, jsxs as _jsxs } from "react/jsx-runtime";
+// src/components/MapView.tsx
 import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import MaplibreGeocoder from '@maplibre/maplibre-gl-geocoder';
@@ -9,12 +10,13 @@ import { useStatusStore } from '../store/statusStore';
 import { useAuthStore } from '../store/authStore';
 import { listenToCliqueLocations } from '../services/location';
 import PostStatusModal from './PostStatusModal';
+import StatusPopup from './StatusPopup';
 // ─── Constants ────────────────────────────────────────────────────────────────
 const NAIROBI_CENTER = [36.8219, -1.2921];
 const NAIROBI_BBOX = '36.6,-1.5,37.0,-1.1';
 const DEFAULT_ZOOM = 12;
 const FOCUS_ZOOM = 14;
-// ─── Geocoder API (no component dependencies — defined once outside) ──────────
+// ─── Geocoder API ─────────────────────────────────────────────────────────────
 const geocoderApi = {
     forwardGeocode: async (config) => {
         const query = typeof config.query === 'string' ? config.query : '';
@@ -39,8 +41,7 @@ const geocoderApi = {
 export default function MapView({ onLocationSelect }) {
     const mapContainer = useRef(null);
     const map = useRef(null);
-    // ── Refs for values used inside map event handlers ────────────────────────
-    // Using refs prevents stale closure bugs — handlers always read latest value
+    // Refs to prevent stale closures in map event handlers
     const isSharingRef = useRef(false);
     const setManualLocationRef = useRef(async () => { });
     const setStatusPositionRef = useRef(() => { });
@@ -54,25 +55,26 @@ export default function MapView({ onLocationSelect }) {
     const [mapLoaded, setMapLoaded] = useState(false);
     const [showStatusModal, setShowStatusModal] = useState(false);
     const [statusPosition, setStatusPosition] = useState(null);
-    // ── Keep refs in sync with latest state/props ─────────────────────────────
+    // Clicked status bubble → show React overlay
+    const [activeStatusMessage, setActiveStatusMessage] = useState(null);
+    // Keep refs current
     useEffect(() => { isSharingRef.current = isSharing; }, [isSharing]);
     useEffect(() => { setManualLocationRef.current = setManualLocation; }, [setManualLocation]);
     useEffect(() => { messagesRef.current = messages; }, [messages]);
     useEffect(() => { setStatusPositionRef.current = setStatusPosition; }, []);
     useEffect(() => { setShowStatusModalRef.current = setShowStatusModal; }, []);
-    // ── Subscribe to clique member locations ──────────────────────────────────
+    // Subscriptions
     useEffect(() => {
         if (!currentClique?.id)
             return;
         return listenToCliqueLocations(currentClique.id, setLocations);
     }, [currentClique?.id]);
-    // ── Subscribe to status messages ──────────────────────────────────────────
     useEffect(() => {
         if (!currentClique?.id)
             return;
         return subscribeToStatus(currentClique.id);
     }, [currentClique?.id, subscribeToStatus]);
-    // ── Initialize map once ───────────────────────────────────────────────────
+    // ── Map init (once) ───────────────────────────────────────────────────────
     useEffect(() => {
         if (!mapContainer.current || map.current)
             return;
@@ -94,7 +96,7 @@ export default function MapView({ onLocationSelect }) {
                 type: 'geojson',
                 data: { type: 'FeatureCollection', features: [] },
             });
-            // Layers
+            // User location circles
             theMap.addLayer({
                 id: 'user-locations-layer',
                 type: 'circle',
@@ -103,75 +105,75 @@ export default function MapView({ onLocationSelect }) {
                     'circle-radius': 12,
                     'circle-color': ['get', 'color'],
                     'circle-stroke-width': 2,
-                    'circle-stroke-color': '#ffffff',
+                    'circle-stroke-color': '#1D0A2E',
                 },
             });
+            // Status message circles
             theMap.addLayer({
                 id: 'status-circles',
                 type: 'circle',
                 source: 'status-messages',
                 paint: {
-                    'circle-radius': 15,
-                    'circle-color': '#ff4444',
+                    'circle-radius': 16,
+                    'circle-color': '#2E1245',
                     'circle-stroke-width': 2,
-                    'circle-stroke-color': '#ffffff',
+                    'circle-stroke-color': '#E8B86D',
                 },
             });
+            // Status message emoji label
             theMap.addLayer({
                 id: 'status-text',
                 type: 'symbol',
                 source: 'status-messages',
                 layout: {
-                    'text-field': ['get', 'text'],
+                    'text-field': '💬',
                     'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-                    'text-size': 12,
-                    'text-offset': [0, -1.5],
-                },
-                paint: {
-                    'text-color': '#000',
-                    'text-halo-color': '#fff',
-                    'text-halo-width': 2,
+                    'text-size': 14,
                 },
             });
-            // Popup on user location click
-            const popup = new maplibregl.Popup({ offset: 25 });
+            // Maplibre popup for user location dot clicks
+            const popup = new maplibregl.Popup({ offset: 25, className: 'uk-map-popup' });
             theMap.on('click', 'user-locations-layer', (e) => {
                 if (!e.features?.length)
                     return;
                 const props = e.features[0].properties;
                 const coords = e.features[0].geometry.coordinates.slice();
-                const time = new Date(props.updatedAt * 1000).toLocaleTimeString();
-                // Read latest messages via ref — no stale closure
+                const time = new Date(props.updatedAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 const latest = messagesRef.current.find(m => m.userId === props.userId);
-                const html = [
-                    `<strong>${props.userId}</strong>`,
-                    `Last seen: ${time}`,
-                    latest ? `<strong>Latest:</strong> ${latest.text}` : '',
-                ].filter(Boolean).join('<br/>');
+                const html = `
+          <div style="font-family:Inter,system-ui;padding:2px 0">
+            <div style="color:#E8B86D;font-weight:600;margin-bottom:2px">${props.userId}</div>
+            <div style="color:#9B8FAD;font-size:11px">Last seen ${time}</div>
+            ${latest ? `<div style="color:#F0EAD6;margin-top:6px;font-size:12px">${latest.text}</div>` : ''}
+          </div>`;
                 popup.setLngLat(coords).setHTML(html).addTo(theMap);
             });
-            theMap.on('mouseenter', 'user-locations-layer', () => {
-                theMap.getCanvas().style.cursor = 'pointer';
-            });
-            theMap.on('mouseleave', 'user-locations-layer', () => {
-                theMap.getCanvas().style.cursor = '';
-            });
-            // Left-click → set manual location (reads isSharing via ref)
-            theMap.on('click', async (e) => {
-                if (!isSharingRef.current) {
-                    alert('Please enable "Share location" first');
+            // Status bubble click → open React overlay
+            theMap.on('click', 'status-circles', (e) => {
+                if (!e.features?.length)
                     return;
-                }
+                const msgId = e.features[0].properties?.id;
+                const msg = messagesRef.current.find(m => m.id === msgId);
+                if (msg)
+                    setActiveStatusMessage(msg);
+            });
+            theMap.on('mouseenter', 'user-locations-layer', () => { theMap.getCanvas().style.cursor = 'pointer'; });
+            theMap.on('mouseleave', 'user-locations-layer', () => { theMap.getCanvas().style.cursor = ''; });
+            theMap.on('mouseenter', 'status-circles', () => { theMap.getCanvas().style.cursor = 'pointer'; });
+            theMap.on('mouseleave', 'status-circles', () => { theMap.getCanvas().style.cursor = ''; });
+            // Left-click on map → set manual location
+            theMap.on('click', async (e) => {
+                if (!isSharingRef.current)
+                    return;
                 const { lng, lat } = e.lngLat;
                 if (confirm(`Set your location to ${lat.toFixed(4)}, ${lng.toFixed(4)}?`)) {
                     await setManualLocationRef.current(lat, lng);
-                    alert('Location updated! Others can now see you.');
                 }
             });
-            // Right-click → post status (reads isSharing via ref)
+            // Right-click → post status
             theMap.on('contextmenu', (e) => {
                 if (!isSharingRef.current) {
-                    alert('Enable location sharing to post status');
+                    alert('Enable location sharing to post a status');
                     return;
                 }
                 const { lng, lat } = e.lngLat;
@@ -192,11 +194,7 @@ export default function MapView({ onLocationSelect }) {
             });
             setMapLoaded(true);
         });
-        return () => {
-            map.current?.remove();
-            map.current = null;
-        };
-        // onLocationSelect is intentionally omitted — it never changes identity
+        return () => { map.current?.remove(); map.current = null; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     // ── Sync user-locations source ────────────────────────────────────────────
@@ -223,7 +221,8 @@ export default function MapView({ onLocationSelect }) {
             features: messages.map(msg => ({
                 type: 'Feature',
                 geometry: { type: 'Point', coordinates: [msg.lng, msg.lat] },
-                properties: { text: msg.text },
+                // Store the message id in properties so click handler can look it up
+                properties: { id: msg.id, text: msg.text },
             })),
         });
     }, [messages, mapLoaded]);
@@ -243,7 +242,6 @@ export default function MapView({ onLocationSelect }) {
         setStatusPosition(null);
         setShowStatusModal(false);
     }, [user, currentClique?.id, statusPosition, addStatus]);
-    // ── FAB handlers ──────────────────────────────────────────────────────────
     const handleOpenStatusModal = useCallback(() => {
         if (!currentLocation) {
             alert('First set your location by clicking on the map.');
@@ -260,23 +258,26 @@ export default function MapView({ onLocationSelect }) {
         map.current?.flyTo({ center: [currentLocation.lng, currentLocation.lat], zoom: FOCUS_ZOOM });
     }, [currentLocation]);
     // ─── Render ───────────────────────────────────────────────────────────────
-    return (_jsxs(_Fragment, { children: [_jsx("div", { ref: mapContainer, style: { height: '100%', width: '100%' } }), isSharing && (_jsxs(_Fragment, { children: [_jsx("button", { "aria-label": "Post a status", onClick: handleOpenStatusModal, style: fabStyle('#007bff', '80px', '56px', '24px'), children: "\uD83D\uDCAC" }), _jsx("button", { "aria-label": "Center map on my location", onClick: handleCenterOnMe, style: fabStyle('#555', '150px', '48px', '20px'), children: "\uD83E\uDDED" })] })), showStatusModal && statusPosition && (_jsx(PostStatusModal, { onClose: () => setShowStatusModal(false), onPost: handlePostStatus }))] }));
+    return (_jsxs(_Fragment, { children: [_jsx("div", { ref: mapContainer, style: { height: '100%', width: '100%' } }), isSharing && (_jsxs(_Fragment, { children: [_jsx("button", { "aria-label": "Post a status", onClick: handleOpenStatusModal, style: fabStyle('#E8B86D', '#1D0A2E', '80px', '56px', '22px'), children: "\uD83D\uDCAC" }), _jsx("button", { "aria-label": "Center map on my location", onClick: handleCenterOnMe, style: fabStyle('#2E1245', '#E8B86D', '148px', '44px', '18px'), children: "\uD83E\uDDED" })] })), showStatusModal && statusPosition && (_jsx(PostStatusModal, { onClose: () => setShowStatusModal(false), onPost: handlePostStatus })), activeStatusMessage && (_jsx(StatusPopup, { message: activeStatusMessage, onClose: () => setActiveStatusMessage(null) }))] }));
 }
-// ─── Style helper ─────────────────────────────────────────────────────────────
-function fabStyle(background, bottom, size, fontSize) {
+// ─── FAB style helper ─────────────────────────────────────────────────────────
+function fabStyle(background, color, bottom, size, fontSize) {
     return {
         position: 'absolute',
         bottom,
         right: '20px',
         zIndex: 1000,
         background,
-        color: 'white',
+        color,
         border: 'none',
         borderRadius: '50%',
         width: size,
         height: size,
         fontSize,
         cursor: 'pointer',
-        boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
     };
 }

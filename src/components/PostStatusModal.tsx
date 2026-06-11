@@ -1,3 +1,4 @@
+// src/components/PostStatusModal.tsx
 import { useState } from 'react';
 
 interface PostStatusModalProps {
@@ -16,40 +17,61 @@ export default function PostStatusModal({ onClose, onPost, initialText = '' }: P
     onClose();
   };
 
+  const suggestions = ['🔥 It\'s lit here!', '🚗 Long queue outside', '🍻 Cheap drinks tonight', '🎵 DJ is insane'];
+
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 2000
-    }}>
-      <div style={{
-        background: 'white',
-        borderRadius: '12px',
-        padding: '1.5rem',
-        width: '90%',
-        maxWidth: '400px'
-      }}>
-        <h2>Post a status update</h2>
+    <div className="uk-overlay">
+      <div className="uk-modal" style={{ maxWidth: '400px' }}>
+        <h2 className="uk-heading" style={{ marginBottom: '0.2rem' }}>Post a status</h2>
+        <p style={{ fontSize: '0.8rem', color: '#9B8FAD', margin: '0 0 1.1rem' }}>
+          Let your clique know what's happening right now
+        </p>
+
+        {/* Quick suggestions */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.85rem' }}>
+          {suggestions.map(s => (
+            <button
+              key={s}
+              onClick={() => setText(s)}
+              style={{
+                background: text === s ? 'rgba(232,184,109,0.15)' : 'rgba(155,143,173,0.1)',
+                border: `0.5px solid ${text === s ? 'rgba(232,184,109,0.4)' : 'rgba(155,143,173,0.2)'}`,
+                borderRadius: '20px',
+                color: text === s ? '#E8B86D' : '#9B8FAD',
+                fontSize: '0.75rem',
+                padding: '3px 10px',
+                cursor: 'pointer',
+              }}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
         <textarea
+          className="uk-input"
           value={text}
-          onChange={(e) => setText(e.target.value.slice(0, maxLength))}
-          placeholder="e.g., 🔥 It's lit here, come join!"
+          onChange={e => setText(e.target.value.slice(0, maxLength))}
+          placeholder="e.g. 🔥 It's absolutely packed, come through!"
           rows={3}
-          style={{ width: '100%', padding: '0.5rem', boxSizing: 'border-box', marginBottom: '0.5rem' }}
+          style={{ marginBottom: '0.4rem' }}
         />
-        <div style={{ fontSize: '0.8rem', textAlign: 'right', marginBottom: '1rem' }}>
+        <div style={{ fontSize: '0.75rem', textAlign: 'right', color: '#9B8FAD', marginBottom: '1rem' }}>
           {text.length}/{maxLength}
         </div>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button onClick={handleSubmit} disabled={!text.trim()}>Post</button>
-          <button onClick={onClose}>Cancel</button>
+
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <button
+            className="uk-btn uk-btn-primary"
+            onClick={handleSubmit}
+            disabled={!text.trim()}
+            style={{ flex: 1 }}
+          >
+            Post
+          </button>
+          <button className="uk-btn uk-btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
         </div>
       </div>
     </div>

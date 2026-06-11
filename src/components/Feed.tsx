@@ -1,3 +1,4 @@
+// src/components/Feed.tsx
 import { useEffect, useState } from 'react';
 import { useCliqueStore } from '../store/cliqueStore';
 import { listenToCliqueVenues, listenToCliqueRatings, Venue, Rating } from '../services/venues';
@@ -17,80 +18,113 @@ export default function Feed() {
   useEffect(() => {
     if (!currentClique?.id) return;
 
-    // Listen to new venues – show latest 10
     const unsubVenues = listenToCliqueVenues(currentClique.id, (venues) => {
-      const newVenueActivities: ActivityItem[] = venues.slice(0, 10).map(v => ({
-        id: v.id!,
+      const items: ActivityItem[] = venues.slice(0, 10).map(v => ({
+        id: `venue-${v.id}`,
         type: 'venue_added',
         data: v,
         timestamp: v.createdAt,
       }));
       setActivities(prev => {
         const other = prev.filter(a => a.type !== 'venue_added');
-        return [...newVenueActivities, ...other].sort((a,b) => b.timestamp.seconds - a.timestamp.seconds);
+        return [...items, ...other].sort((a, b) => b.timestamp.seconds - a.timestamp.seconds);
       });
     });
 
-    // Listen to new ratings – show latest 10
     const unsubRatings = listenToCliqueRatings(currentClique.id, (ratings) => {
-      const newRatingActivities: ActivityItem[] = ratings.slice(0, 10).map(r => ({
-        id: r.id!,
+      const items: ActivityItem[] = ratings.slice(0, 10).map(r => ({
+        id: `rating-${r.id}`,
         type: 'rating_added',
         data: r,
         timestamp: r.createdAt,
       }));
       setActivities(prev => {
         const other = prev.filter(a => a.type !== 'rating_added');
-        return [...newRatingActivities, ...other].sort((a,b) => b.timestamp.seconds - a.timestamp.seconds);
+        return [...items, ...other].sort((a, b) => b.timestamp.seconds - a.timestamp.seconds);
       });
     });
 
-    return () => {
-      unsubVenues();
-      unsubRatings();
-    };
-  }, [currentClique]);
+    return () => { unsubVenues(); unsubRatings(); };
+  }, [currentClique?.id]);
 
   if (!currentClique) return null;
 
-  const getVenueName = async (venueId: string): Promise<string> => {
-    // For simplicity, we don't fetch venue name here. Could be added later.
-    return "a venue";
-  };
-
   return (
-    <div style={{
-      position: 'fixed',
-      top: 0,
-      left: 0,
-      width: '280px',
-      height: '100vh',
-      background: 'white',
-      boxShadow: '2px 0 8px rgba(0,0,0,0.1)',
-      zIndex: 1000,
-      overflowY: 'auto',
-      padding: '1rem',
-      pointerEvents: 'auto'
-    }}>
-      <h2 style={{ fontSize: '1.2rem', marginTop: 0 }}>Recent Activity</h2>
-      {activities.length === 0 && <p>No activity yet.</p>}
-      {activities.map(activity => (
-        <div key={activity.id} style={{
-          borderBottom: '1px solid #eee',
-          padding: '0.75rem 0',
-          fontSize: '0.85rem'
-        }}>
-          {activity.type === 'venue_added' && (
-            <div>📍 New venue: <strong>{(activity.data as Venue).name}</strong> added</div>
-          )}
-          {activity.type === 'rating_added' && (
-            <div>⭐ <strong>{(activity.data as Rating).rating}★</strong> rating logged</div>
-          )}
-          <div style={{ fontSize: '0.7rem', color: '#888' }}>
-            {new Date(activity.timestamp.seconds * 1000).toLocaleString()}
+    <div
+      className="uk-scroll"
+      style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '270px',
+        height: '100%',
+        background: 'rgba(29,10,46,0.93)',
+        backdropFilter: 'blur(8px)',
+        borderRight: '0.5px solid rgba(232,184,109,0.12)',
+        zIndex: 900,
+        overflowY: 'auto',
+        padding: '1rem',
+      }}
+    >
+      <h2 style={{ color: '#E8B86D', fontSize: '0.8rem', letterSpacing: '0.08em', margin: '0 0 1rem' }}>
+        RECENT ACTIVITY
+      </h2>
+
+      {activities.length === 0 && (
+        <p style={{ color: '#9B8FAD', fontSize: '0.82rem' }}>No activity yet.</p>
+      )}
+
+      {activities.map(activity => {
+        const time = new Date(activity.timestamp.seconds * 1000).toLocaleTimeString([], {
+          hour: '2-digit', minute: '2-digit',
+        });
+        const date = new Date(activity.timestamp.seconds * 1000).toLocaleDateString([], {
+          month: 'short', day: 'numeric',
+        });
+
+        return (
+          <div
+            key={activity.id}
+            style={{
+              borderBottom: '0.5px solid rgba(232,184,109,0.08)',
+              padding: '0.7rem 0',
+              fontSize: '0.83rem',
+            }}
+          >
+            {activity.type === 'venue_added' ? (
+              <div>
+                <span style={{ marginRight: '0.4rem' }}>📍</span>
+                <span style={{ color: '#9B8FAD' }}>New venue: </span>
+                <span style={{ color: '#E8B86D', fontWeight: 500 }}>
+                  {(activity.data as Venue).name}
+                </span>
+              </div>
+            ) : (
+              <div>
+                <span style={{ marginRight: '0.4rem' }}>⭐</span>
+                <span style={{ color: '#E8B86D', fontWeight: 500 }}>
+                  {(activity.data as Rating).rating}★
+                </span>
+                <span style={{ color: '#9B8FAD' }}> visit logged</span>
+                {(activity.data as Rating).comment && (
+                  <div style={{
+                    marginTop: '0.25rem',
+                    color: '#F0EAD6',
+                    fontStyle: 'italic',
+                    fontSize: '0.78rem',
+                    paddingLeft: '1.4rem',
+                  }}>
+                    "{(activity.data as Rating).comment}"
+                  </div>
+                )}
+              </div>
+            )}
+            <div style={{ fontSize: '0.72rem', color: '#9B8FAD', marginTop: '0.3rem', paddingLeft: '1.4rem' }}>
+              {date} · {time}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

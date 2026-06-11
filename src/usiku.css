@@ -1,0 +1,151 @@
+/* src/usiku.css — Usiku design system tokens */
+:root {
+  --uk-bg-deep:       #1D0A2E;
+  --uk-bg-mid:        #2E1245;
+  --uk-bg-surface:    #3D1F5C;
+  --uk-bg-input:      #2A1040;
+  --uk-gold:          #E8B86D;
+  --uk-gold-dim:      #C49A52;
+  --uk-lavender:      #9B8FAD;
+  --uk-text:          #F0EAD6;
+  --uk-text-muted:    #9B8FAD;
+  --uk-red:           #E24B4A;
+  --uk-red-dim:       rgba(226,75,74,0.15);
+  --uk-border:        rgba(232,184,109,0.15);
+  --uk-border-hover:  rgba(232,184,109,0.35);
+  --uk-radius-sm:     6px;
+  --uk-radius-md:     10px;
+  --uk-radius-lg:     14px;
+}
+
+/* Base reset for Usiku surfaces */
+.uk-screen {
+  background: var(--uk-bg-deep);
+  color: var(--uk-text);
+  font-family: 'Inter', system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+/* Inputs */
+.uk-input {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: var(--uk-bg-input);
+  border: 0.5px solid var(--uk-border);
+  border-radius: var(--uk-radius-sm);
+  color: var(--uk-text);
+  font-size: 0.9rem;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.uk-input::placeholder { color: var(--uk-lavender); opacity: 0.7; }
+.uk-input:focus { border-color: var(--uk-border-hover); }
+
+textarea.uk-input { resize: vertical; }
+
+/* Buttons */
+.uk-btn {
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--uk-radius-sm);
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+}
+.uk-btn:active { transform: scale(0.98); }
+.uk-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.uk-btn-primary {
+  background: var(--uk-gold);
+  color: #1D0A2E;
+}
+.uk-btn-primary:hover:not(:disabled) { background: var(--uk-gold-dim); }
+
+.uk-btn-ghost {
+  background: rgba(255,255,255,0.06);
+  color: var(--uk-lavender);
+  border: 0.5px solid var(--uk-border);
+}
+.uk-btn-ghost:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
+
+.uk-btn-danger {
+  background: var(--uk-red-dim);
+  color: var(--uk-red);
+}
+.uk-btn-danger:hover:not(:disabled) { background: rgba(226,75,74,0.25); }
+
+/* Cards */
+.uk-card {
+  background: var(--uk-bg-mid);
+  border: 0.5px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  padding: 1rem 1.1rem;
+}
+
+/* Modal overlay */
+.uk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+.uk-modal {
+  background: var(--uk-bg-mid);
+  border: 0.5px solid var(--uk-border);
+  border-radius: var(--uk-radius-lg);
+  padding: 1.5rem;
+  width: 90%;
+  max-width: 480px;
+  max-height: 85vh;
+  overflow-y: auto;
+  color: var(--uk-text);
+}
+
+/* Label */
+.uk-label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--uk-lavender);
+  margin-bottom: 0.35rem;
+  letter-spacing: 0.03em;
+}
+
+/* Gold heading */
+.uk-heading {
+  color: var(--uk-gold);
+  font-weight: 600;
+  margin: 0 0 0.1rem 0;
+}
+
+/* Pill / tag */
+.uk-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  background: rgba(155,143,173,0.15);
+  color: var(--uk-lavender);
+  border: 0.5px solid var(--uk-border);
+}
+.uk-pill-active {
+  background: var(--uk-gold);
+  color: #1D0A2E;
+  border-color: var(--uk-gold);
+}
+
+/* Divider */
+.uk-divider {
+  border: none;
+  border-top: 0.5px solid var(--uk-border);
+  margin: 1rem 0;
+}
+
+/* Scrollbar */
+.uk-scroll::-webkit-scrollbar { width: 4px; }
+.uk-scroll::-webkit-scrollbar-track { background: transparent; }
+.uk-scroll::-webkit-scrollbar-thumb { background: var(--uk-bg-surface); border-radius: 2px; }

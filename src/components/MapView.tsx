@@ -1,3 +1,4 @@
+// src/components/MapView.tsx
 import { useEffect, useRef, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import MaplibreGeocoder, { MaplibreGeocoderApiConfig } from '@maplibre/maplibre-gl-geocoder';
@@ -8,7 +9,9 @@ import { useLocationStore } from '../store/locationStore';
 import { useStatusStore } from '../store/statusStore';
 import { useAuthStore } from '../store/authStore';
 import { listenToCliqueLocations, UserLocation } from '../services/location';
+import { StatusMessage } from '../services/status';
 import PostStatusModal from './PostStatusModal';
+import StatusPopup from './StatusPopup';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -29,7 +32,7 @@ const NAIROBI_BBOX = '36.6,-1.5,37.0,-1.1';
 const DEFAULT_ZOOM = 12;
 const FOCUS_ZOOM = 14;
 
-// ─── Geocoder API (no component dependencies — defined once outside) ──────────
+// ─── Geocoder API ─────────────────────────────────────────────────────────────
 
 const geocoderApi = {
   forwardGeocode: async (config: MaplibreGeocoderApiConfig) => {
@@ -59,13 +62,12 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
 
-  // ── Refs for values used inside map event handlers ────────────────────────
-  // Using refs prevents stale closure bugs — handlers always read latest value
+  // Refs to prevent stale closures in map event handlers
   const isSharingRef = useRef(false);
   const setManualLocationRef = useRef<(lat: number, lng: number) => Promise<void>>(async () => {});
   const setStatusPositionRef = useRef<(pos: StatusPosition) => void>(() => {});
-  const setShowStatusModalRef = useRef<(show: boolean) => void>(() => {});
-  const messagesRef = useRef<ReturnType<typeof useStatusStore.getState>['messages']>([]);
+  const setShowStatusModalRef = useRef<(v: boolean) => void>(() => {});
+  const messagesRef = useRef<StatusMessage[]>([]);
 
   const { currentClique } = useCliqueStore();
   const { setManualLocation, isSharing, currentLocation } = useLocationStore();
@@ -77,26 +79,28 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusPosition, setStatusPosition] = useState<StatusPosition | null>(null);
 
-  // ── Keep refs in sync with latest state/props ─────────────────────────────
+  // Clicked status bubble → show React overlay
+  const [activeStatusMessage, setActiveStatusMessage] = useState<StatusMessage | null>(null);
+
+  // Keep refs current
   useEffect(() => { isSharingRef.current = isSharing; }, [isSharing]);
   useEffect(() => { setManualLocationRef.current = setManualLocation; }, [setManualLocation]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { setStatusPositionRef.current = setStatusPosition; }, []);
   useEffect(() => { setShowStatusModalRef.current = setShowStatusModal; }, []);
 
-  // ── Subscribe to clique member locations ──────────────────────────────────
+  // Subscriptions
   useEffect(() => {
     if (!currentClique?.id) return;
     return listenToCliqueLocations(currentClique.id, setLocations);
   }, [currentClique?.id]);
 
-  // ── Subscribe to status messages ──────────────────────────────────────────
   useEffect(() => {
     if (!currentClique?.id) return;
     return subscribeToStatus(currentClique.id);
   }, [currentClique?.id, subscribeToStatus]);
 
-  // ── Initialize map once ───────────────────────────────────────────────────
+  // ── Map init (once) ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
 
@@ -121,7 +125,7 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
         data: { type: 'FeatureCollection', features: [] },
       });
 
-      // Layers
+      // User location circles
       theMap.addLayer({
         id: 'user-locations-layer',
         type: 'circle',
@@ -130,78 +134,79 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
           'circle-radius': 12,
           'circle-color': ['get', 'color'],
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
+          'circle-stroke-color': '#1D0A2E',
         },
       });
+
+      // Status message circles
       theMap.addLayer({
         id: 'status-circles',
         type: 'circle',
         source: 'status-messages',
         paint: {
-          'circle-radius': 15,
-          'circle-color': '#ff4444',
+          'circle-radius': 16,
+          'circle-color': '#2E1245',
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#ffffff',
+          'circle-stroke-color': '#E8B86D',
         },
       });
+
+      // Status message emoji label
       theMap.addLayer({
         id: 'status-text',
         type: 'symbol',
         source: 'status-messages',
         layout: {
-          'text-field': ['get', 'text'],
+          'text-field': '💬',
           'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
-          'text-size': 12,
-          'text-offset': [0, -1.5],
-        },
-        paint: {
-          'text-color': '#000',
-          'text-halo-color': '#fff',
-          'text-halo-width': 2,
+          'text-size': 14,
         },
       });
 
-      // Popup on user location click
-      const popup = new maplibregl.Popup({ offset: 25 });
+      // Maplibre popup for user location dot clicks
+      const popup = new maplibregl.Popup({ offset: 25, className: 'uk-map-popup' });
+
       theMap.on('click', 'user-locations-layer', (e) => {
         if (!e.features?.length) return;
         const props = e.features[0].properties as { userId: string; updatedAt: number };
         const coords = (e.features[0].geometry as Point).coordinates.slice() as [number, number];
-        const time = new Date(props.updatedAt * 1000).toLocaleTimeString();
-        // Read latest messages via ref — no stale closure
+        const time = new Date(props.updatedAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const latest = messagesRef.current.find(m => m.userId === props.userId);
-        const html = [
-          `<strong>${props.userId}</strong>`,
-          `Last seen: ${time}`,
-          latest ? `<strong>Latest:</strong> ${latest.text}` : '',
-        ].filter(Boolean).join('<br/>');
+        const html = `
+          <div style="font-family:Inter,system-ui;padding:2px 0">
+            <div style="color:#E8B86D;font-weight:600;margin-bottom:2px">${props.userId}</div>
+            <div style="color:#9B8FAD;font-size:11px">Last seen ${time}</div>
+            ${latest ? `<div style="color:#F0EAD6;margin-top:6px;font-size:12px">${latest.text}</div>` : ''}
+          </div>`;
         popup.setLngLat(coords).setHTML(html).addTo(theMap);
       });
 
-      theMap.on('mouseenter', 'user-locations-layer', () => {
-        theMap.getCanvas().style.cursor = 'pointer';
-      });
-      theMap.on('mouseleave', 'user-locations-layer', () => {
-        theMap.getCanvas().style.cursor = '';
+      // Status bubble click → open React overlay
+      theMap.on('click', 'status-circles', (e) => {
+        if (!e.features?.length) return;
+        const msgId = e.features[0].properties?.id as string;
+        const msg = messagesRef.current.find(m => m.id === msgId);
+        if (msg) setActiveStatusMessage(msg);
       });
 
-      // Left-click → set manual location (reads isSharing via ref)
+      theMap.on('mouseenter', 'user-locations-layer', () => { theMap.getCanvas().style.cursor = 'pointer'; });
+      theMap.on('mouseleave', 'user-locations-layer', () => { theMap.getCanvas().style.cursor = ''; });
+      theMap.on('mouseenter', 'status-circles', () => { theMap.getCanvas().style.cursor = 'pointer'; });
+      theMap.on('mouseleave', 'status-circles', () => { theMap.getCanvas().style.cursor = ''; });
+
+      // Left-click on map → set manual location
       theMap.on('click', async (e) => {
-        if (!isSharingRef.current) {
-          alert('Please enable "Share location" first');
-          return;
-        }
+        if (!isSharingRef.current) return;
         const { lng, lat } = e.lngLat;
         if (confirm(`Set your location to ${lat.toFixed(4)}, ${lng.toFixed(4)}?`)) {
           await setManualLocationRef.current(lat, lng);
-          alert('Location updated! Others can now see you.');
         }
       });
 
-      // Right-click → post status (reads isSharing via ref)
+      // Right-click → post status
       theMap.on('contextmenu', (e) => {
         if (!isSharingRef.current) {
-          alert('Enable location sharing to post status');
+          alert('Enable location sharing to post a status');
           return;
         }
         const { lng, lat } = e.lngLat;
@@ -225,11 +230,7 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
       setMapLoaded(true);
     });
 
-    return () => {
-      map.current?.remove();
-      map.current = null;
-    };
-    // onLocationSelect is intentionally omitted — it never changes identity
+    return () => { map.current?.remove(); map.current = null; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -256,7 +257,8 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
       features: messages.map(msg => ({
         type: 'Feature' as const,
         geometry: { type: 'Point' as const, coordinates: [msg.lng, msg.lat] },
-        properties: { text: msg.text },
+        // Store the message id in properties so click handler can look it up
+        properties: { id: msg.id, text: msg.text },
       })),
     });
   }, [messages, mapLoaded]);
@@ -268,19 +270,15 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
   }, [mapLoaded, currentLocation]);
 
   // ── Post status handler ───────────────────────────────────────────────────
-  const handlePostStatus = useCallback(
-    (text: string) => {
-      if (!user || !currentClique?.id || !statusPosition) return;
-      const { uid } = user;
-      const { lat, lng, venueId } = statusPosition;
-      addStatus(uid, currentClique.id, lat, lng, text, venueId).catch(console.error);
-      setStatusPosition(null);
-      setShowStatusModal(false);
-    },
-    [user, currentClique?.id, statusPosition, addStatus]
-  );
+  const handlePostStatus = useCallback((text: string) => {
+    if (!user || !currentClique?.id || !statusPosition) return;
+    const { uid } = user;
+    const { lat, lng, venueId } = statusPosition;
+    addStatus(uid, currentClique.id, lat, lng, text, venueId).catch(console.error);
+    setStatusPosition(null);
+    setShowStatusModal(false);
+  }, [user, currentClique?.id, statusPosition, addStatus]);
 
-  // ── FAB handlers ──────────────────────────────────────────────────────────
   const handleOpenStatusModal = useCallback(() => {
     if (!currentLocation) {
       alert('First set your location by clicking on the map.');
@@ -309,14 +307,14 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
           <button
             aria-label="Post a status"
             onClick={handleOpenStatusModal}
-            style={fabStyle('#007bff', '80px', '56px', '24px')}
+            style={fabStyle('#E8B86D', '#1D0A2E', '80px', '56px', '22px')}
           >
             💬
           </button>
           <button
             aria-label="Center map on my location"
             onClick={handleCenterOnMe}
-            style={fabStyle('#555', '150px', '48px', '20px')}
+            style={fabStyle('#2E1245', '#E8B86D', '148px', '44px', '18px')}
           >
             🧭
           </button>
@@ -329,14 +327,22 @@ export default function MapView({ onLocationSelect }: MapViewProps) {
           onPost={handlePostStatus}
         />
       )}
+
+      {activeStatusMessage && (
+        <StatusPopup
+          message={activeStatusMessage}
+          onClose={() => setActiveStatusMessage(null)}
+        />
+      )}
     </>
   );
 }
 
-// ─── Style helper ─────────────────────────────────────────────────────────────
+// ─── FAB style helper ─────────────────────────────────────────────────────────
 
 function fabStyle(
   background: string,
+  color: string,
   bottom: string,
   size: string,
   fontSize: string
@@ -347,13 +353,16 @@ function fabStyle(
     right: '20px',
     zIndex: 1000,
     background,
-    color: 'white',
+    color,
     border: 'none',
     borderRadius: '50%',
     width: size,
     height: size,
     fontSize,
     cursor: 'pointer',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   };
 }

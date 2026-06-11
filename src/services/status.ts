@@ -1,4 +1,9 @@
-import { collection, addDoc, query, where, orderBy, onSnapshot, Timestamp, Unsubscribe } from 'firebase/firestore';
+// src/services/status.ts
+import {
+  collection, addDoc, deleteDoc, doc,
+  query, where, orderBy, onSnapshot,
+  Timestamp, Unsubscribe
+} from 'firebase/firestore';
 import { db } from './firebase';
 
 export interface StatusMessage {
@@ -26,7 +31,7 @@ export async function postStatus(
   await addDoc(collection(db, 'statusMessages'), {
     userId,
     cliqueId,
-    venueId: venueId || null,
+    venueId: venueId ?? null,
     lat,
     lng,
     text,
@@ -34,6 +39,14 @@ export async function postStatus(
     expiresAt,
   });
   return 'ok';
+}
+
+/**
+ * Delete a status message.
+ * Only call after confirming current user is the owner (userId).
+ */
+export async function deleteStatus(statusId: string): Promise<void> {
+  await deleteDoc(doc(db, 'statusMessages', statusId));
 }
 
 export function listenToStatusMessages(
@@ -46,9 +59,8 @@ export function listenToStatusMessages(
     orderBy('createdAt', 'desc')
   );
   return onSnapshot(q, (snapshot) => {
-    const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }) as StatusMessage);
+    const all = snapshot.docs.map(d => ({ id: d.id, ...d.data() }) as StatusMessage);
     const now = new Date();
-    const valid = all.filter(msg => msg.expiresAt.toDate() > now);
-    callback(valid);
+    callback(all.filter(msg => msg.expiresAt.toDate() > now));
   });
 }
